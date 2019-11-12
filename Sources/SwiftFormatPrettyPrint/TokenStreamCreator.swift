@@ -379,7 +379,9 @@ private final class TokenStreamCreator: SyntaxVisitor {
       // If the child doesn't have a body (it's just the `get`/`set` keyword), then we're in a
       // protocol and we want to let them be placed on the same line if possible. Otherwise, we
       // place a newline between each accessor.
-      after(child.lastToken, tokens: child.body == nil ? .break(.same) : .newline)
+      after(
+        child.lastToken,
+        tokens: .break(.same, newlines: child.body == nil ? .default() : .mandatory(1)))
     }
     return .visitChildren
   }
@@ -411,8 +413,11 @@ private final class TokenStreamCreator: SyntaxVisitor {
 
     arrangeBracesAndContents(of: node.body, contentsKeyPath: \.statements)
 
-    let elsePrecedingBreak = config.lineBreakBeforeControlFlowKeywords ? Token.newline : Token.space
+    let elsePrecedingBreak =
+      config.lineBreakBeforeControlFlowKeywords
+        ? Token.break(.same, newlines: .mandatory(1)) : Token.space
     before(node.elseKeyword, tokens: elsePrecedingBreak)
+
     if node.elseBody is IfStmtSyntax {
       after(node.elseKeyword, tokens: .space)
     }
@@ -481,8 +486,9 @@ private final class TokenStreamCreator: SyntaxVisitor {
   }
 
   func visit(_ node: CatchClauseSyntax) -> SyntaxVisitorContinueKind {
-    let catchPrecedingBreak = config.lineBreakBeforeControlFlowKeywords
-      ? Token.newline : Token.space
+    let catchPrecedingBreak =
+      config.lineBreakBeforeControlFlowKeywords
+        ? Token.break(.same, newlines: .mandatory(1)) : Token.space
     before(node.catchKeyword, tokens: catchPrecedingBreak)
     before(node.pattern?.firstToken, tokens: .space)
 
@@ -523,7 +529,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
     after(node.leftBrace, tokens: .close)
 
     if !areBracesCompletelyEmpty(node, contentsKeyPath: \.cases) {
-      before(node.rightBrace, tokens: .newline)
+      before(node.rightBrace, tokens: .break(.same, newlines: .mandatory(1)))
     } else {
       before(node.rightBrace, tokens: .break(.same, size: 0))
     }
@@ -532,7 +538,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
   }
 
   func visit(_ node: SwitchCaseSyntax) -> SyntaxVisitorContinueKind {
-    before(node.firstToken, tokens: .newline)
+    before(node.firstToken, tokens: .break(.same, newlines: .mandatory(1)))
     after(node.unknownAttr?.lastToken, tokens: .space)
     after(node.label.lastToken, tokens: .break(.reset, size: 0), .break(.open), .open)
     after(node.lastToken, tokens: .break(.close, size: 0), .close)
@@ -856,9 +862,11 @@ private final class TokenStreamCreator: SyntaxVisitor {
     // line as a parent construct, the content of an `#if` block must always be on its own line;
     // the newline token inserted at the end enforces this.
     if let lastElemTok = node.elements.lastToken {
-      after(lastElemTok, tokens: .break(breakKindClose), .newline, .close)
+      after(lastElemTok, tokens: .break(breakKindClose, newlines: .mandatory(1)), .close)
     } else {
-      before(tokenToOpenWith.nextToken, tokens: .break(breakKindClose), .newline, .close)
+      before(
+        tokenToOpenWith.nextToken,
+        tokens: .break(breakKindClose, newlines: .mandatory(1)), .close)
     }
     return .visitChildren
   }
@@ -868,23 +876,27 @@ private final class TokenStreamCreator: SyntaxVisitor {
   }
 
   func visit(_ node: MemberDeclListSyntax) -> SyntaxVisitorContinueKind {
-    // This is the same as `insertTokens(_:betweenElementsOf:)`, but testing for an extra condition
-    // on the left-hand element.
-    for item in node.dropLast() where shouldInsertNewline(basedOn: item.semicolon) {
-      after(item.lastToken, tokens: .newline)
+    let items = Array(node)
+    for index in items.indices {
+      let item = items[index]
+
+      let newlines: NewlineBehavior =
+        (index != items.indices.last && shouldInsertNewline(basedOn: item.semicolon))
+          ? .mandatory(1) : .default()
+      let resetSize = item.semicolon != nil ? 1 : 0
+
+      before(item.firstToken, tokens: .open)
+      after(item.lastToken, tokens: .close, .break(.reset, size: resetSize, newlines: newlines))
     }
     return .visitChildren
   }
 
   func visit(_ node: MemberDeclListItemSyntax) -> SyntaxVisitorContinueKind {
-    before(node.firstToken, tokens: .open)
-    let resetSize = node.semicolon != nil ? 1 : 0
-    after(node.lastToken, tokens: .close, .break(.reset, size: resetSize))
     return .visitChildren
   }
 
   func visit(_ node: SourceFileSyntax) -> SyntaxVisitorContinueKind {
-    before(node.eofToken, tokens: .newline)
+    before(node.eofToken, tokens: .break(.same, newlines: .mandatory(1)))
     return .visitChildren
   }
 
@@ -928,20 +940,20 @@ private final class TokenStreamCreator: SyntaxVisitor {
   func visit(_ node: PrecedenceGroupDeclSyntax) -> SyntaxVisitorContinueKind {
     after(node.precedencegroupKeyword, tokens: .break)
     after(node.identifier, tokens: .break(.reset))
-    after(node.leftBrace, tokens: .break(.open), .newline)
+    after(node.leftBrace, tokens: .break(.open, newlines: .mandatory(1)))
     before(node.rightBrace, tokens: .break(.close))
     return .visitChildren
   }
 
   func visit(_ node: PrecedenceGroupRelationSyntax) -> SyntaxVisitorContinueKind {
     after(node.colon, tokens: .break(.open))
-    after(node.lastToken, tokens: .break(.close), .newline)
+    after(node.lastToken, tokens: .break(.close, newlines: .mandatory(1)))
     return .visitChildren
   }
 
   func visit(_ node: PrecedenceGroupAssignmentSyntax) -> SyntaxVisitorContinueKind {
     after(node.colon, tokens: .break(.open))
-    after(node.lastToken, tokens: .break(.close), .newline)
+    after(node.lastToken, tokens: .break(.close, newlines: .mandatory(1)))
     return .visitChildren
   }
 
@@ -952,7 +964,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
 
   func visit(_ node: PrecedenceGroupAssociativitySyntax) -> SyntaxVisitorContinueKind {
     after(node.colon, tokens: .break(.open))
-    after(node.lastToken, tokens: .break(.close), .newline)
+    after(node.lastToken, tokens: .break(.close, newlines: .mandatory(1)))
     return .visitChildren
   }
 
@@ -968,7 +980,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
     // This is the same as `insertTokens(_:betweenElementsOf:)`, but testing for an extra condition
     // on the left-hand element.
     for item in node.dropLast() where shouldInsertNewline(basedOn: item.semicolon) {
-      after(item.lastToken, tokens: .newline)
+      after(item.lastToken, tokens: .break(.same, newlines: .mandatory(1)))
     }
     return .visitChildren
   }
@@ -1723,7 +1735,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
     // leading whitespace so that the pretty-printer can re-indent the string according to the
     // standard rules that it would apply.
     for line in lines.dropFirst() as ArraySlice {
-      appendToken(.newline(kind: .mandatory))
+      appendToken(.break(.same, newlines: .mandatory(1)))
 
       // Verify that the characters to be stripped are all spaces. If they are not, the string
       // is not valid (no line should contain less leading whitespace than the line with the
@@ -1780,7 +1792,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
         var shouldExtractTrailingComment = false
         if wasLineComment && !hasAppendedTrailingComment {
           switch afterToken {
-          case .break, .newlines: shouldExtractTrailingComment = true
+          case .break: shouldExtractTrailingComment = true
           default: break
           }
         }
@@ -1900,7 +1912,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
     guard let node = node, let contentsKeyPath = contentsKeyPath else { return }
 
     if shouldResetBeforeLeftBrace {
-      before(node.leftBrace, tokens: .break(.reset, size: 1, ignoresDiscretionary: true))
+      before(node.leftBrace, tokens: .break(.reset, newlines: .default(ignoresDiscretionary: true)))
     }
     if !areBracesCompletelyEmpty(node, contentsKeyPath: contentsKeyPath) {
       after(node.leftBrace, tokens: .break(.open, size: 1), .open)
@@ -2024,7 +2036,8 @@ private final class TokenStreamCreator: SyntaxVisitor {
       // for this to be a trailing line comment. Otherwise, we'll need to append one
       // ourselves to ensure that it's present.
       if !config.respectsExistingLineBreaks {
-        tokens.append(.newline)
+        // FIXME
+        tokens.append(.break(.same, newlines: .mandatory(1)))
       }
       return (true, tokens)
 
@@ -2072,7 +2085,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
       case .lineComment(let text):
         if index > 0 || isStartOfFile {
           appendToken(.comment(Comment(kind: .line, text: text), wasEndOfLine: false))
-          appendToken(.newline)
+          appendToken(.break(.same, newlines: .mandatory(1)))  // FIXME
           isStartOfFile = false
         }
         lastPieceWasLineComment = true
@@ -2090,13 +2103,13 @@ private final class TokenStreamCreator: SyntaxVisitor {
 
       case .docLineComment(let text):
         appendToken(.comment(Comment(kind: .docLine, text: text), wasEndOfLine: false))
-        appendToken(.newline)
+        appendToken(.break(.same, newlines: .mandatory(1)))  // FIXME
         isStartOfFile = false
         lastPieceWasLineComment = true
 
       case .docBlockComment(let text):
         appendToken(.comment(Comment(kind: .docBlock, text: text), wasEndOfLine: false))
-        appendToken(.newline)
+        appendToken(.break(.same, newlines: .mandatory(1)))  // FIXME
         isStartOfFile = false
         lastPieceWasLineComment = false
 
@@ -2105,7 +2118,7 @@ private final class TokenStreamCreator: SyntaxVisitor {
         if config.respectsExistingLineBreaks
           && (lastPieceWasLineComment || isDiscretionaryNewlineAllowed(before: token))
         {
-          appendToken(.newlines(count, kind: .discretionary))
+          addDiscretionaryNewlines(count)
         } else {
           // Even if discretionary line breaks are not being respected, we still respect multiple
           // line breaks in order to keep blank separator lines that the user might want.
@@ -2113,10 +2126,31 @@ private final class TokenStreamCreator: SyntaxVisitor {
           // and declarations; as currently implemented, multiple newlines will locally the
           // configuration setting.
           if count > 1 {
-            appendToken(.newlines(count, kind: .discretionary))
+            addDiscretionaryNewlines(count)
           }
         }
 
+      default:
+        break
+      }
+    }
+  }
+
+  ///
+  private func addDiscretionaryNewlines(_ count: Int) {
+    for index in tokens.indices.reversed() {
+      switch tokens[index] {
+      case .break(let kind, let size, let newlines):
+        let newNewlines: NewlineBehavior
+        switch newlines {
+        case .default: newNewlines = .discretionary(count)
+        case .discretionary(let current): newNewlines = .discretionary(current + count)
+        case .mandatory(let current): newNewlines = .mandatory(current + count)
+        }
+        tokens[index] = .break(kind, size: size, newlines: newNewlines)
+        return
+      case .open, .close:
+        continue
       default:
         break
       }
@@ -2143,8 +2177,8 @@ private final class TokenStreamCreator: SyntaxVisitor {
     func isBreakMoreRecentThanNonbreakingContent(_ tokens: [Token]) -> Bool? {
       for token in tokens.reversed() as ReversedCollection {
         switch token {
-        case .newlines: return true
-        case .break(_, _, let ignoresDiscretionary): return !ignoresDiscretionary
+        case .break(_, _, .default(ignoresDiscretionary: true)): return false
+        case .break: return true
         case .comment, .space, .syntax, .verbatim: return false
         default: break
         }
@@ -2183,24 +2217,24 @@ private final class TokenStreamCreator: SyntaxVisitor {
 
       // If we see a pair of newlines where one is required and one is not, keep only the required
       // one.
-      case (.newlines(_, kind: .flexible), .newlines(let count, let requiredKind))
-      where requiredKind == .discretionary || requiredKind == .mandatory,
-        (.newlines(let count, let requiredKind), .newlines(_, kind: .flexible))
-      where requiredKind == .discretionary || requiredKind == .mandatory:
-        tokens[tokens.count - 1] = .newlines(count, kind: requiredKind)
-        return
-
-      // If we see a pair of required newlines, combine them into a new token with the sum of
-      // their counts.
-      case (.newlines(let first, let firstKind), .newlines(let second, let secondKind))
-      where firstKind == secondKind && (firstKind == .discretionary || firstKind == .mandatory):
-        tokens[tokens.count - 1] = .newlines(first + second, kind: firstKind)
-        return
-
-      // If we see a pair of flexible newlines, keep only the larger one.
-      case (.newlines(let first, kind: .flexible), .newlines(let second, kind: .flexible)):
-        tokens[tokens.count - 1] = .newlines(max(first, second), kind: .flexible)
-        return
+//      case (.newlines(_, kind: .flexible), .newlines(let count, let requiredKind))
+//      where requiredKind == .discretionary || requiredKind == .mandatory,
+//        (.newlines(let count, let requiredKind), .newlines(_, kind: .flexible))
+//      where requiredKind == .discretionary || requiredKind == .mandatory:
+//        tokens[tokens.count - 1] = .newlines(count, kind: requiredKind)
+//        return
+//
+//      // If we see a pair of required newlines, combine them into a new token with the sum of
+//      // their counts.
+//      case (.newlines(let first, let firstKind), .newlines(let second, let secondKind))
+//      where firstKind == secondKind && (firstKind == .discretionary || firstKind == .mandatory):
+//        tokens[tokens.count - 1] = .newlines(first + second, kind: firstKind)
+//        return
+//
+//      // If we see a pair of flexible newlines, keep only the larger one.
+//      case (.newlines(let first, kind: .flexible), .newlines(let second, kind: .flexible)):
+//        tokens[tokens.count - 1] = .newlines(max(first, second), kind: .flexible)
+//        return
 
       // If we see a pair of spaces where one or both are flexible, combine them into a new token
       // with the maximum of their counts.
