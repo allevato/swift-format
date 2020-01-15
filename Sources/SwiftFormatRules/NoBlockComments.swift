@@ -28,90 +28,90 @@ import SwiftSyntax
 public final class NoBlockComments: SyntaxFormatRule {
   public override func visit(_ token: TokenSyntax) -> Syntax {
     var pieces = [TriviaPiece]()
-    var hasBlockComment = false
-    var validToken = token
+    var didChangeTrivia = false
 
-    // Ensures that the comments that appear inline with code have
-    // at least 2 spaces before the `//`.
-    if let nextToken = token.nextToken,
-      containsBlockCommentInline(trivia: nextToken.leadingTrivia)
-    {
-      hasBlockComment = true
-      validToken = addSpacesBeforeComment(token)
-    }
-
-    // Ensures that all block comments are replaced with line comment,
-    // unless the comment is between tokens on the same line.
-    for piece in token.leadingTrivia {
-      if case .blockComment(let text) = piece,
-        !commentIsBetweenCode(token)
-      {
-        diagnose(.avoidBlockComment, on: token)
-        hasBlockComment = true
-        let lineCommentText = convertBlockCommentsToLineComments(text)
-        let lineComment = TriviaPiece.lineComment(lineCommentText)
-        pieces.append(lineComment)
+    // Replaces block comments with line comments, unless the comment is between tokens on the same
+    // line.
+    let leadingTrivia = token.leadingTrivia
+    for pieceIndex in leadingTrivia.indices {
+      let piece = leadingTrivia[pieceIndex]
+      if case .blockComment(let text) = piece {
+        if isEndOfLineTriviaPiece(
+          at: pieceIndex,
+          in: leadingTrivia,
+          isEOF: token.tokenKind == .eof
+        ) {
+          diagnose(.avoidBlockComment, on: token)
+          didChangeTrivia = true
+          pieces.append(contentsOf: rewrittenTriviaPieces(forBlockComment: text))
+        } else {
+          diagnose(.avoidBlockCommentBetweenCode, on: token)
+          pieces.append(piece)
+        }
       } else {
         pieces.append(piece)
       }
     }
-    validToken = validToken.withLeadingTrivia(Trivia(pieces: pieces))
-    return hasBlockComment ? validToken : token
+
+    return didChangeTrivia ? token.withLeadingTrivia(Trivia(pieces: pieces)) : token
   }
 
-  /// Returns a Boolean value indicating if the given trivia has a piece trivia
-  /// of block comment inline with code.
-  private func containsBlockCommentInline(trivia: Trivia) -> Bool {
-    // When the comment isn't inline with code, it doesn't need to
-    // to check that there are two spaces before the line comment.
-    if let firstPiece = trivia.first {
-      if case .newlines(_) = firstPiece {
+  /// Returns a value indicating whether the trivia piece at the given index in a trivia collection
+  /// is at the end of the line that it occupies (excluding trailing whitespace).
+  private func isEndOfLineTriviaPiece(
+    at index: Trivia.Index,
+    in trivia: Trivia,
+    isEOF: Bool = false
+  ) -> Bool {
+    var index = trivia.index(after: index)
+    while index != trivia.endIndex {
+      switch trivia[index] {
+      case .spaces, .tabs, .verticalTabs, .formfeeds:
+        // Ignore non-newline whitespace.
+        break
+      case .newlines, .carriageReturns, .carriageReturnLineFeeds:
+        // If we first encounter a newline or carriage return, the trivia piece was at the end of
+        // a line.
+        return true
+      default:
+        // If we encounter non-whitespace/non-newline trivia, the comment must be on the same line
+        // as other text after it.
         return false
       }
+      trivia.formIndex(after: &index)
     }
-    for piece in trivia {
-      if case .blockComment(_) = piece {
-        return true
-      }
-    }
-    return false
-  }
 
-  /// Indicates if a block comment is between tokens on the same line.
-  /// If it does, it should only raise a lint error.
-  private func commentIsBetweenCode(_ token: TokenSyntax) -> Bool {
-    let hasCommentBetweenCode = token.leadingTrivia.isBetweenTokens
-    if hasCommentBetweenCode {
-      diagnose(.avoidBlockCommentBetweenCode, on: token)
-    }
-    return hasCommentBetweenCode
-  }
-
-  /// Ensures there is always at least 2 spaces before the comment.
-  private func addSpacesBeforeComment(_ token: TokenSyntax) -> TokenSyntax {
-    let numSpaces = token.trailingTrivia.numberOfSpaces
-    if numSpaces < 2 {
-      let addSpaces = 2 - numSpaces
-      return token.withTrailingTrivia(
-        token.trailingTrivia.appending(.spaces(addSpaces)))
-    }
-    return token
+    // If we ran out of trivia but didn't encounter a newline or carriage return, then it's the end
+    // of line only if the token is the end of the file.
+    return isEOF
   }
 
   /// Receives the text of a Block comment and converts it to a Line Comment format text.
-  private func convertBlockCommentsToLineComments(_ text: String) -> String {
-    // Removes the '/*', '*/', the extra spaces and newlines from the comment.
-    let textTrim = text.dropFirst(2).dropLast(2)
-      .trimmingCharacters(in: .whitespacesAndNewlines)
+  private func rewrittenTriviaPieces(forBlockComment text: String) -> [TriviaPiece] {
+    // Remove the comment delimiters and trim non-newline whitespace characters.
+    var text = text.dropFirst(2).dropLast(2)
 
-    let splitComment = textTrim.split(separator: "\n", omittingEmptySubsequences: false)
-    var lineCommentText = [String]()
-
-    for line in splitComment {
-      let startsComment = line.starts(with: " ") || line.count == 0 ? "//" : "// "
-      lineCommentText.append(startsComment + line)
+    // Remove only the first and last newline if they are present, to avoid extra line comment lines
+    // when the user puts the comment delimiters (and nothing else) on their own lines.
+    if text.first == "\n" {
+      text = text.dropFirst(1)
     }
-    return lineCommentText.joined(separator: "\n")
+    if text.last == "\n" {
+      text = text.dropLast(1)
+    }
+
+    let commentLines = text.split(separator: "\n", omittingEmptySubsequences: false)
+
+    var pieces = [TriviaPiece]()
+    for line in commentLines {
+      if !pieces.isEmpty {
+        pieces.append(.newlines(1))
+      }
+      let prefix = line.starts(with: " ") || line.count == 0 ? "//" : "// "
+      let lineComment = (prefix + line).trimmingCharacters(in: .whitespaces)
+      pieces.append(.lineComment(lineComment))
+    }
+    return pieces
   }
 }
 
@@ -121,26 +121,4 @@ extension Diagnostic.Message {
 
   static let avoidBlockCommentBetweenCode = Diagnostic.Message(
     .warning, "remove block comment inline with code")
-}
-
-extension Trivia {
-  /// Indicates if the trivia is between tokens, for example
-  /// if a leading trivia that contains a comment, doesn't starts
-  /// and finishes with a new line then the comment is between tokens.
-  var isBetweenTokens: Bool {
-    var beginsNewLine = false
-    var endsNewLine = false
-
-    if let firstPiece = self.first,
-      let lastPiece = self.reversed().first
-    {
-      if case .newlines(_) = firstPiece {
-        beginsNewLine = true
-      }
-      if case .newlines(_) = lastPiece {
-        endsNewLine = true
-      }
-    }
-    return !beginsNewLine && !endsNewLine
-  }
 }
