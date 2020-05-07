@@ -71,13 +71,17 @@ class PrettyPrintTestCase: DiagnosingTestCase {
       return nil
     }
 
+    var output = ""
     let context = makeContext(sourceFileSyntax: sourceFileSyntax, configuration: configuration)
     let printer = PrettyPrinter(
       context: context,
       operatorContext: OperatorContext.makeBuiltinOperatorContext(),
-      node: Syntax(sourceFileSyntax),
       printTokenStream: false,
-      whitespaceOnly: whitespaceOnly)
-    return printer.prettyPrint()
+      whitespaceOnly: whitespaceOnly
+    ) {
+      output += $0
+    }
+    printer.print(Syntax(sourceFileSyntax))
+    return output
   }
 }

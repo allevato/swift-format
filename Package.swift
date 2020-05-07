@@ -23,7 +23,7 @@ let package = Package(
   dependencies: [
     .package(
       url: "https://github.com/apple/swift-syntax",
-      .revision("swift-DEVELOPMENT-SNAPSHOT-2020-04-19-a")
+      .revision("0.50200.0")
     ),
     .package(
       url: "https://github.com/apple/swift-argument-parser.git",
