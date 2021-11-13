@@ -14,6 +14,14 @@ import Foundation
 import SwiftFormatConfiguration
 import SwiftSyntax
 
+public struct SourceContext {
+  public var affectedLine: Substring
+
+  public var location: Finding.Location
+
+  public var length: Int
+}
+
 /// Context contains the bits that each formatter and linter will need access to.
 ///
 /// Specifically, it is the container for the shared configuration, diagnostic consumer, and URL of
@@ -46,6 +54,9 @@ public final class Context {
   /// Indicates whether the file is known to import XCTest.
   public var importsXCTest: XCTestImportState
 
+  /// The source text being formatted or linted, if available.
+  public let source: String?
+
   /// An object that converts `AbsolutePosition` values to `SourceLocation` values.
   public let sourceLocationConverter: SourceLocationConverter
 
@@ -68,6 +79,7 @@ public final class Context {
     self.findingEmitter = FindingEmitter(consumer: findingConsumer)
     self.fileURL = fileURL
     self.importsXCTest = .notDetermined
+    self.source = source
     self.sourceLocationConverter =
       source.map { SourceLocationConverter(file: fileURL.relativePath, source: $0) }
       ?? SourceLocationConverter(file: fileURL.relativePath, tree: sourceFileSyntax)
@@ -97,5 +109,20 @@ public final class Context {
     case .disabled:
       return false
     }
+  }
+
+  func sourceContext(at position: AbsolutePosition) -> SourceContext? {
+    guard let source = source else { return nil }
+
+    let location = sourceLocationConverter.location(for: position)
+    let lineNumber = location.line!
+    let lineStartPosition = sourceLocationConverter.position(ofLine: lineNumber, column: 1)
+    let nextLineStartPosition = sourceLocationConverter.position(ofLine: lineNumber + 1, column: 1)
+    let affectedLine =
+      source.utf8.dropFirst(lineStartPosition.utf8Offset).prefix(nextLineStartPosition.utf8Offset - lineStartPosition.utf8Offset)
+    return SourceContext(
+      affectedLine: Substring(affectedLine),
+      location: Finding.Location(location)!,
+      length: affectedLine.count)
   }
 }

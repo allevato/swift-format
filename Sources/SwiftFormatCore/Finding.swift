@@ -90,6 +90,8 @@ public struct Finding {
   /// Notes that provide additional detail about the finding.
   public let notes: [Note]
 
+  public let sourceContext: SourceContext?
+
   /// Creates a new finding with the given category, message, severity, optional location, and
   /// notes.
   init(
@@ -97,12 +99,14 @@ public struct Finding {
     message: Message,
     severity: Finding.Severity,
     location: Location? = nil,
-    notes: [Note] = []
+    notes: [Note] = [],
+    sourceContext: SourceContext? = nil
   ) {
     self.category = category
     self.message = message
     self.severity = severity
     self.location = location
     self.notes = notes
+    self.sourceContext = sourceContext
   }
 }

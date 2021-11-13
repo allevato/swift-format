@@ -32,6 +32,7 @@ final class StderrDiagnosticPrinter {
   /// Definitions of the ANSI "Select Graphic Rendition" sequences used in diagnostics.
   private enum ANSISGR: String {
     case boldRed = "1;31"
+    case boldGreen = "1;32"
     case boldYellow = "1;33"
     case boldMagenta = "1;35"
     case boldWhite = "1;37"
@@ -80,6 +81,13 @@ final class StderrDiagnosticPrinter {
         stderr.write("\(ansiSGR(.boldYellow))[\(category)] ")
       }
       stderr.write("\(ansiSGR(.boldWhite))\(data.message)\(ansiSGR(.reset))\n")
+      if let sourceContext = data.sourceContext {
+        stderr.write(String(sourceContext.affectedLine))
+        let indicator =
+          String(repeating: " ", count: sourceContext.location.column - 1)
+          + "^" + String(repeating: "~", count: sourceContext.length - 1)
+        stderr.write("\(ansiSGR(.boldGreen))\(indicator)\(ansiSGR(.reset))\n")
+      }
     }
   }
 

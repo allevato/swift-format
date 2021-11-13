@@ -24,6 +24,8 @@ struct UnifiedDiagnosticData: DiagnosticData {
   /// The message text associated with the diagnostic.
   var message: String
 
+  var sourceContext: SourceContext?
+
   var description: String {
     if let category = category {
       return "[\(category)] \(message)"
@@ -33,9 +35,10 @@ struct UnifiedDiagnosticData: DiagnosticData {
   }
 
   /// Creates a new unified diagnostic with the given optional category and message.
-  init(category: String? = nil, message: String) {
+  init(category: String? = nil, message: String, sourceContext: SourceContext? = nil) {
     self.category = category
     self.message = message
+    self.sourceContext = sourceContext
   }
 }
 
@@ -143,8 +146,10 @@ final class UnifiedDiagnosticsEngine {
   /// Converts a lint finding into a diagnostic message that can be used by the `TSCBasic`
   /// diagnostics engine and returns it.
   private func diagnosticMessage(for finding: Finding) -> TSCBasic.Diagnostic.Message {
-    let data =
-      UnifiedDiagnosticData(category: "\(finding.category)", message: "\(finding.message.text)")
+    let data = UnifiedDiagnosticData(
+      category: "\(finding.category)",
+      message: "\(finding.message.text)",
+      sourceContext: finding.sourceContext)
 
     switch finding.severity {
     case .error: return .error(data)

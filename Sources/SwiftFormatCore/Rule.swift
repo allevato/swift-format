@@ -49,18 +49,23 @@ extension Rule {
     leadingTriviaIndex: Trivia.Index? = nil,
     notes: [Finding.Note] = []
   ) {
-    let syntaxLocation: SourceLocation?
+    let absolutePosition: AbsolutePosition?
+    //let syntaxLocation: SourceLocation?
     if let leadingTriviaIndex = leadingTriviaIndex {
-      syntaxLocation = node?.startLocation(
-        ofLeadingTriviaAt: leadingTriviaIndex, converter: context.sourceLocationConverter)
+      absolutePosition = node?.position(ofLeadingTriviaAt: leadingTriviaIndex)
+//      syntaxLocation = node?.startLocation(
+//        ofLeadingTriviaAt: leadingTriviaIndex, converter: context.sourceLocationConverter)
     } else {
-      syntaxLocation = node?.startLocation(converter: context.sourceLocationConverter)
+      absolutePosition = node?.positionAfterSkippingLeadingTrivia
+      //syntaxLocation = node?.startLocation(converter: context.sourceLocationConverter)
     }
 
+    let sourceContext = absolutePosition.flatMap { context.sourceContext(at: $0) }
     context.findingEmitter.emit(
         message,
         category: RuleBasedFindingCategory(ruleType: type(of: self)),
-        location: syntaxLocation.flatMap(Finding.Location.init),
-        notes: notes)
+        location: sourceContext?.location, //syntaxLocation.flatMap(Finding.Location.init),
+        notes: notes,
+        sourceContext: sourceContext)
   }
 }
