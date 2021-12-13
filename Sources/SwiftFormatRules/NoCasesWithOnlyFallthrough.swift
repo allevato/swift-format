@@ -33,7 +33,8 @@ public final class NoCasesWithOnlyFallthrough: SyntaxFormatRule {
       fallthroughOnlyCases.removeAll()
     }
 
-    for element in node {
+    for index in node.indices {
+      let element = node[index]
       guard let switchCase = element.as(SwitchCaseSyntax.self) else {
         // If the element isn't a `SwitchCaseSyntax`, it might be an `#if` block surrounding some
         // conditional cases. Just add it to the list of new cases and then reset our current list
@@ -43,7 +44,15 @@ public final class NoCasesWithOnlyFallthrough: SyntaxFormatRule {
         continue
       }
 
-      if isFallthroughOnly(switchCase), let label = switchCase.label.as(SwitchCaseLabelSyntax.self) {
+      // If the case after this one is an `@unknown default`, they can't be merged together.
+      let nextIndex = node.index(after: index)
+      if nextIndex != node.endIndex, isUnknownDefaultCase(node[nextIndex]) {
+        continue
+      }
+
+      if isFallthroughOnly(switchCase),
+        let label = switchCase.label.as(SwitchCaseLabelSyntax.self)
+      {
         // If the case is fallthrough-only, store it as a violation that we will merge later.
         diagnose(
           .collapseCase(name: label.caseItems.withoutTrivia().description), on: switchCase)
@@ -125,6 +134,12 @@ public final class NoCasesWithOnlyFallthrough: SyntaxFormatRule {
       return false
     }
     return true
+  }
+
+  /// Returns true if the given node is an `@unknown default` case clause.
+  private func isUnknownDefaultCase(_ node: Syntax) -> Bool {
+    guard let switchCase = node.as(SwitchCaseSyntax.self) else { return false }
+    return switchCase.unknownAttr != nil
   }
 
   /// Returns a copy of the given valid case (and its statements) but with the case items from the

@@ -239,4 +239,28 @@ final class NoCasesWithOnlyFallthroughTests: LintOrFormatRuleTestCase {
         }
         """)
   }
+
+  func testFallthroughCaseBeforeUnknownDefaultIsNotCombined() {
+    XCTAssertFormatting(
+      NoCasesWithOnlyFallthrough.self,
+      input: """
+        switch numbers {
+        case 1:
+          fallthrough
+        case 2:
+          fallthrough
+        @unknown default:
+          print("")
+        }
+        """,
+      expected: """
+        switch numbers {
+        case 1, 2:
+          fallthrough
+        @unknown default:
+          print("")
+        }
+        """,
+      checkForUnassertedDiagnostics: true)
+  }
 }
