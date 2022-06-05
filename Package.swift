@@ -182,6 +182,10 @@ if ProcessInfo.processInfo.environment["SWIFTCI_USE_LOCAL_DEPS"] == nil {
       branch: "main"
     ),
     .package(
+      url: "https://github.com/apple/swift-docc-plugin",
+      branch: "main"
+    ),
+    .package(
       url: "https://github.com/apple/swift-syntax",
       branch: "main"
     ),
@@ -193,6 +197,7 @@ if ProcessInfo.processInfo.environment["SWIFTCI_USE_LOCAL_DEPS"] == nil {
 } else {
   package.dependencies += [
     .package(path: "../swift-argument-parser"),
+    .package(path: "../swift-docc-plugin"),
     .package(path: "../swift-syntax"),
     .package(path: "../swift-tools-support-core"),
   ]
