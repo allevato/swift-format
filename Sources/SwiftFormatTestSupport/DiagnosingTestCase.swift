@@ -37,11 +37,15 @@ open class DiagnosingTestCase: XCTestCase {
     -> Context
   {
     consumer = TestingFindingConsumer()
+    let assumedURL = URL(fileURLWithPath: "/tmp/test.swift")
+    let locationConverter =
+      SourceLocationConverter(file: assumedURL.relativePath, tree: sourceFileSyntax)
     let context = Context(
       configuration: configuration ?? Configuration(),
       findingConsumer: consumer.consume,
-      fileURL: URL(fileURLWithPath: "/tmp/test.swift"),
+      fileURL: assumedURL,
       sourceFileSyntax: sourceFileSyntax,
+      locationConverter: locationConverter,
       ruleNameCache: ruleNameCache)
     return context
   }

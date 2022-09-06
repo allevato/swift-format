@@ -2,8 +2,8 @@ import SwiftFormatConfiguration
 import SwiftFormatCore
 import SwiftFormatTestSupport
 import SwiftFormatWhitespaceLinter
+import SwiftParser
 import SwiftSyntax
-import SwiftSyntaxParser
 import XCTest
 
 class WhitespaceTestCase: DiagnosingTestCase {
@@ -22,7 +22,7 @@ class WhitespaceTestCase: DiagnosingTestCase {
   final func performWhitespaceLint(input: String, expected: String, linelength: Int? = nil) {
     let sourceFileSyntax: SourceFileSyntax
     do {
-      sourceFileSyntax = try SyntaxParser.parse(source: input)
+      sourceFileSyntax = try Parser.parse(source: input)
     } catch {
       XCTFail("Parsing failed with error: \(error)")
       return

@@ -11,12 +11,13 @@
 //===----------------------------------------------------------------------===//
 
 import Foundation
+import SwiftDiagnostics
 import SwiftFormatConfiguration
 import SwiftFormatCore
 import SwiftFormatPrettyPrint
 import SwiftFormatRules
+import SwiftParser
 import SwiftSyntax
-import SwiftSyntaxParser
 
 /// Formats Swift source code or syntax trees according to the Swift style guidelines.
 public final class SwiftFormatter {
@@ -55,7 +56,7 @@ public final class SwiftFormatter {
   public func format<Output: TextOutputStream>(
     contentsOf url: URL,
     to outputStream: inout Output,
-    parsingDiagnosticHandler: ((Diagnostic) -> Void)? = nil
+    parsingDiagnosticHandler: ((Diagnostic, SourceLocation) -> Void)? = nil
   ) throws {
     guard FileManager.default.isReadableFile(atPath: url.path) else {
       throw SwiftFormatError.fileNotReadable
@@ -64,9 +65,17 @@ public final class SwiftFormatter {
     if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
       throw SwiftFormatError.isDirectory
     }
-    let sourceFile = try SyntaxParser.parse(url, diagnosticHandler: parsingDiagnosticHandler)
     let source = try String(contentsOf: url, encoding: .utf8)
-    try format(syntax: sourceFile, assumingFileURL: url, source: source, to: &outputStream)
+    let sourceFile = try Parser.parse(source: source)
+    let locationConverter = SourceLocationConverter(file: url.relativePath, source: source)
+    if let parsingDiagnosticHandler {
+      for diagnostic in ParseDiagnosticsGenerator.diagnostics(for: sourceFile) {
+        parsingDiagnosticHandler(diagnostic, diagnostic.location(converter: locationConverter))
+      }
+    }
+    try format(
+      syntax: sourceFile, assumingFileURL: url, source: source,
+      locationConverter: locationConverter, to: &outputStream)
   }
 
   /// Formats the given Swift source code and writes the result to an output stream.
@@ -85,11 +94,19 @@ public final class SwiftFormatter {
     source: String,
     assumingFileURL url: URL?,
     to outputStream: inout Output,
-    parsingDiagnosticHandler: ((Diagnostic) -> Void)? = nil
+    parsingDiagnosticHandler: ((Diagnostic, SourceLocation) -> Void)? = nil
   ) throws {
-    let sourceFile =
-      try SyntaxParser.parse(source: source, diagnosticHandler: parsingDiagnosticHandler)
-    try format(syntax: sourceFile, assumingFileURL: url, source: source, to: &outputStream)
+    let assumedURL = url ?? URL(fileURLWithPath: "source")
+    let locationConverter = SourceLocationConverter(file: assumedURL.relativePath, source: source)
+    let sourceFile = try Parser.parse(source: source)
+    if let parsingDiagnosticHandler {
+      for diagnostic in ParseDiagnosticsGenerator.diagnostics(for: sourceFile) {
+        parsingDiagnosticHandler(diagnostic, diagnostic.location(converter: locationConverter))
+      }
+    }
+    try format(
+      syntax: sourceFile, assumingFileURL: assumedURL, source: source,
+      locationConverter: locationConverter, to: &outputStream)
   }
 
   /// Formats the given Swift syntax tree and writes the result to an output stream.
@@ -107,21 +124,25 @@ public final class SwiftFormatter {
   public func format<Output: TextOutputStream>(
     syntax: SourceFileSyntax, assumingFileURL url: URL?, to outputStream: inout Output
   ) throws {
-    try format(syntax: syntax, assumingFileURL: url, source: nil, to: &outputStream)
+    let assumedURL = url ?? URL(fileURLWithPath: "source")
+    let locationConverter = SourceLocationConverter(file: assumedURL.relativePath, tree: syntax)
+    try format(
+      syntax: syntax, assumingFileURL: assumedURL, source: nil,
+      locationConverter: locationConverter, to: &outputStream)
   }
 
   private func format<Output: TextOutputStream>(
-    syntax: SourceFileSyntax, assumingFileURL url: URL?, source: String?,
-    to outputStream: inout Output
+    syntax: SourceFileSyntax, assumingFileURL url: URL, source: String?,
+    locationConverter: SourceLocationConverter, to outputStream: inout Output
   ) throws {
     if let position = _firstInvalidSyntaxPosition(in: Syntax(syntax)) {
       throw SwiftFormatError.fileContainsInvalidSyntax(position: position)
     }
 
-    let assumedURL = url ?? URL(fileURLWithPath: "source")
     let context = Context(
-      configuration: configuration, findingConsumer: findingConsumer, fileURL: assumedURL,
-      sourceFileSyntax: syntax, source: source, ruleNameCache: ruleNameCache)
+      configuration: configuration, findingConsumer: findingConsumer, fileURL: url,
+      sourceFileSyntax: syntax, source: source, locationConverter: locationConverter,
+      ruleNameCache: ruleNameCache)
     let pipeline = FormatPipeline(context: context)
     let transformedSyntax = pipeline.visit(Syntax(syntax))
 

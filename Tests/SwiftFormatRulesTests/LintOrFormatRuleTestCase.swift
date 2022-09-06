@@ -1,8 +1,8 @@
 import SwiftFormatConfiguration
 import SwiftFormatCore
 import SwiftFormatTestSupport
+import SwiftParser
 import SwiftSyntax
-import SwiftSyntaxParser
 import XCTest
 
 class LintOrFormatRuleTestCase: DiagnosingTestCase {
@@ -21,7 +21,7 @@ class LintOrFormatRuleTestCase: DiagnosingTestCase {
   ) {
     let sourceFileSyntax: SourceFileSyntax
     do {
-      sourceFileSyntax = try SyntaxParser.parse(source: input)
+      sourceFileSyntax = try Parser.parse(source: input)
     } catch {
       XCTFail("\(error)", file: file, line: line)
       return
@@ -64,7 +64,7 @@ class LintOrFormatRuleTestCase: DiagnosingTestCase {
   ) {
     let sourceFileSyntax: SourceFileSyntax
     do {
-      sourceFileSyntax = try SyntaxParser.parse(source: input)
+      sourceFileSyntax = try Parser.parse(source: input)
     } catch {
       XCTFail("\(error)", file: file, line: line)
       return

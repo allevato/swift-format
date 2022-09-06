@@ -11,8 +11,9 @@
 //===----------------------------------------------------------------------===//
 
 import SwiftFormatCore
+import SwiftDiagnostics
+import SwiftParser
 import SwiftSyntax
-import SwiftSyntaxParser
 import TSCBasic
 
 /// Diagnostic data that retains the separation of a finding category (if present) from the rest of
@@ -113,31 +114,25 @@ final class UnifiedDiagnosticsEngine {
 
   /// Emits a diagnostic from the syntax parser and any of its associated notes.
   ///
-  /// - Parameter diagnostic: The syntax parser diagnostic that should be emitted.
-  func consumeParserDiagnostic(_ diagnostic: SwiftSyntaxParser.Diagnostic) {
+  /// - Parameters:
+  ///   - diagnostic: The syntax parser diagnostic that should be emitted.
+  ///   - location: The `SourceLocation` of the diagnostic.
+  func consumeParserDiagnostic(
+    _ diagnostic: SwiftDiagnostics.Diagnostic,
+    location: SourceLocation
+  ) {
     diagnosticsEngine.emit(
-      diagnosticMessage(for: diagnostic.message),
-      location: diagnostic.location.map(UnifiedLocation.parserLocation))
-
-    for note in diagnostic.notes {
-      diagnosticsEngine.emit(
-        .note(UnifiedDiagnosticData(message: note.message.text)),
-        location: note.location.map(UnifiedLocation.parserLocation))
-    }
+      diagnosticMessage(for: diagnostic),
+      location: UnifiedLocation.parserLocation(location))
   }
 
   /// Converts a diagnostic message from the syntax parser into a diagnostic message that can be
   /// used by the `TSCBasic` diagnostics engine and returns it.
-  private func diagnosticMessage(for message: SwiftSyntaxParser.Diagnostic.Message)
+  private func diagnosticMessage(for diagnostic: SwiftDiagnostics.Diagnostic)
     -> TSCBasic.Diagnostic.Message
   {
-    let data = UnifiedDiagnosticData(category: nil, message: message.text)
-
-    switch message.severity {
-    case .error: return .error(data)
-    case .warning: return .warning(data)
-    case .note: return .note(data)
-    }
+    let data = UnifiedDiagnosticData(category: nil, message: diagnostic.message)
+    return .error(data)
   }
 
   /// Converts a lint finding into a diagnostic message that can be used by the `TSCBasic`

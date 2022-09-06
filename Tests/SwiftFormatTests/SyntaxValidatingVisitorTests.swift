@@ -1,6 +1,6 @@
 import SwiftFormat
+import SwiftParser
 import SwiftSyntax
-import SwiftSyntaxParser
 import XCTest
 
 final class SyntaxValidatingVisitorTests: XCTestCase {
@@ -24,7 +24,7 @@ final class SyntaxValidatingVisitorTests: XCTestCase {
   func testInvalidSyntax() {
     var input =
       """
-      class {TemplateName} {
+      class !@#$% {
         var bar = 0
       }
       """
@@ -41,7 +41,7 @@ final class SyntaxValidatingVisitorTests: XCTestCase {
 
   /// Parses the given source into a syntax tree.
   private func createSyntax(from source: String) -> Syntax {
-    return Syntax(try! SyntaxParser.parse(source: source))
+    return Syntax(try! Parser.parse(source: source))
   }
 
   /// Asserts that `SyntaxValidatingVisitor` finds invalid syntax in the given source code at the

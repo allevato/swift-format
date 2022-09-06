@@ -14,7 +14,6 @@ import Foundation
 import SwiftFormat
 import SwiftFormatConfiguration
 import SwiftSyntax
-import SwiftSyntaxParser
 
 class Frontend {
   /// Represents a file to be processed by the frontend and any file-specific options associated

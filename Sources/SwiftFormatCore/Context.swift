@@ -62,18 +62,17 @@ public final class Context {
     fileURL: URL,
     sourceFileSyntax: SourceFileSyntax,
     source: String? = nil,
+    locationConverter: SourceLocationConverter,
     ruleNameCache: [ObjectIdentifier: String]
   ) {
     self.configuration = configuration
     self.findingEmitter = FindingEmitter(consumer: findingConsumer)
     self.fileURL = fileURL
     self.importsXCTest = .notDetermined
-    self.sourceLocationConverter =
-      source.map { SourceLocationConverter(file: fileURL.relativePath, source: $0) }
-      ?? SourceLocationConverter(file: fileURL.relativePath, tree: sourceFileSyntax)
+    self.sourceLocationConverter = locationConverter
     self.ruleMask = RuleMask(
       syntaxNode: Syntax(sourceFileSyntax),
-      sourceLocationConverter: sourceLocationConverter
+      sourceLocationConverter: locationConverter
     )
     self.ruleNameCache = ruleNameCache
   }

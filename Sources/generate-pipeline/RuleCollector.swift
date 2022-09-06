@@ -12,8 +12,8 @@
 
 import Foundation
 import SwiftFormatCore
+import SwiftParser
 import SwiftSyntax
-import SwiftSyntaxParser
 
 /// Collects information about rules in the formatter code base.
 final class RuleCollector {
@@ -57,7 +57,8 @@ final class RuleCollector {
       guard let baseName = baseName as? String, baseName.hasSuffix(".swift") else { continue }
 
       let fileURL = url.appendingPathComponent(baseName)
-      let sourceFile = try SyntaxParser.parse(fileURL)
+      let sourceText = try String(contentsOf: fileURL)
+      let sourceFile = try Parser.parse(source: sourceText)
 
       for statement in sourceFile.statements {
         guard let detectedRule = self.detectedRule(at: statement) else { continue }

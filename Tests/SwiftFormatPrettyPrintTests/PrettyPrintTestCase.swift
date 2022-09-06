@@ -2,8 +2,8 @@ import SwiftFormatConfiguration
 import SwiftFormatCore
 import SwiftFormatPrettyPrint
 import SwiftFormatTestSupport
+import SwiftParser
 import SwiftSyntax
-import SwiftSyntaxParser
 import XCTest
 
 class PrettyPrintTestCase: DiagnosingTestCase {
@@ -66,7 +66,7 @@ class PrettyPrintTestCase: DiagnosingTestCase {
   ) -> String? {
     let sourceFileSyntax: SourceFileSyntax
     do {
-      sourceFileSyntax = try SyntaxParser.parse(source: source)
+      sourceFileSyntax = try Parser.parse(source: source)
     } catch {
       XCTFail("Parsing failed with error: \(error)")
       return nil
