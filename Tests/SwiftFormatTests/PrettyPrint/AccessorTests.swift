@@ -1,4 +1,50 @@
 final class AccessorTests: PrettyPrintTestCase {
+  func testBasic() {
+    assertPrettyPrintEqual(
+      input: """
+        var x: Int { get set }
+        """,
+      expected: """
+        var x: Int {
+          get set
+        }
+
+        """,
+      linelength: 12)
+
+    assertPrettyPrintEqual(
+      input: """
+        var x: Int { get set }
+        """,
+      expected: """
+        var x:
+          Int
+        {
+          get
+          set
+        }
+
+        """,
+      linelength: 6)
+
+    assertPrettyPrintEqual(
+      input: """
+        var x: Int {
+          get { }
+          set { }
+        }
+        """,
+      expected: """
+        var x: Int {
+          get {}
+          set {}
+        }
+
+        """,
+      linelength: 45)
+
+  }
+
   func testBasicAccessors() {
     let input =
       """

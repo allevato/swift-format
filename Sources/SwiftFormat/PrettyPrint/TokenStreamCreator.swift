@@ -14,7 +14,7 @@ import Foundation
 import SwiftOperators
 import SwiftSyntax
 
-fileprivate extension AccessorBlockSyntax {
+extension AccessorBlockSyntax {
   /// Assuming that the accessor only contains an implicit getter (i.e. no 
   /// `get` or `set`), return the code block items in that getter.
   var getterCodeBlockItems: CodeBlockItemListSyntax {

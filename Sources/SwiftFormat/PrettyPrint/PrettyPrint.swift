@@ -175,11 +175,16 @@ public class PrettyPrinter {
   public init(context: Context, node: Syntax, printTokenStream: Bool, whitespaceOnly: Bool) {
     self.context = context
     let configuration = context.configuration
-    self.tokens = node.makeTokenStream(
+//    self.tokens = node.makeTokenStream(
+//      configuration: configuration, operatorTable: context.operatorTable)
+
+    let creator = NewTokenStreamCreator(
       configuration: configuration, operatorTable: context.operatorTable)
+    self.tokens = computeCommands(creator, node: node)
+
     self.maxLineLength = configuration.lineLength
     self.spaceRemaining = self.maxLineLength
-    self.printTokenStream = printTokenStream
+    self.printTokenStream = true //printTokenStream
     self.whitespaceOnly = whitespaceOnly
   }
 
@@ -711,70 +716,70 @@ public class PrettyPrinter {
     switch token {
     case .syntax(let syntax):
       printDebugIndent()
-      print("[SYNTAX \"\(syntax)\" Length: \(length) Idx: \(idx)]")
+      print("(syntax \"\(syntax)\" len=\(length) idx=\(idx))")
 
     case .break(let kind, let size, let newline):
       printDebugIndent()
-      print("[BREAK Kind: \(kind) Size: \(size) Length: \(length) NL: \(newline) Idx: \(idx)]")
+      print("(break kind=\(kind) size=\(size) len=\(length) newlines=\(newline) idx=\(idx))")
 
     case .open(let breakstyle):
       printDebugIndent()
       switch breakstyle {
       case .consistent:
-        print("[OPEN Consistent Length: \(length) Idx: \(idx)]")
+        print("(open consistent len=\(length) idx=\(idx))")
       case .inconsistent:
-        print("[OPEN Inconsistent Length: \(length) Idx: \(idx)]")
+        print("(open inconsistent len=\(length) idx=\(idx))")
       }
       debugIndent.append(.spaces(2))
 
     case .close:
       debugIndent.removeLast()
       printDebugIndent()
-      print("[CLOSE Idx: \(idx)]")
+      print("(close idx=\(idx))")
 
     case .space(let size, let flexible):
       printDebugIndent()
-      print("[SPACE Size: \(size) Flexible: \(flexible) Length: \(length) Idx: \(idx)]")
+      print("(space size=\(size) flexible=\(flexible) len=\(length) idx=\(idx))")
 
     case .comment(let comment, let wasEndOfLine):
       printDebugIndent()
       switch comment.kind {
       case .line:
-        print("[COMMENT Line Length: \(length) EOL: \(wasEndOfLine) Idx: \(idx)]")
+        print("(comment line len=\(length) eol=\(wasEndOfLine) idx=\(idx))")
       case .docLine:
-        print("[COMMENT DocLine Length: \(length) EOL: \(wasEndOfLine) Idx: \(idx)]")
+        print("(comment docline len=\(length) eol=\(wasEndOfLine) idx=\(idx)]")
       case .block:
-        print("[COMMENT Block Length: \(length) EOL: \(wasEndOfLine) Idx: \(idx)]")
+        print("(comment block len=\(length) eol=\(wasEndOfLine) idx=\(idx))")
       case .docBlock:
-        print("[COMMENT DocBlock Length: \(length) EOL: \(wasEndOfLine) Idx: \(idx)]")
+        print("(comment docblock len=\(length) eol=\(wasEndOfLine) idx=\(idx))")
       }
       printDebugIndent()
       print(comment.print(indent: debugIndent))
 
     case .verbatim(let verbatim):
       printDebugIndent()
-      print("[VERBATIM Length: \(length) Idx: \(idx)]")
+      print("(verbatim len=\(length) idx=\(idx))")
       print(verbatim.print(indent: debugIndent))
 
     case .printerControl(let kind):
       printDebugIndent()
-      print("[PRINTER CONTROL Kind: \(kind) Idx: \(idx)]")
+      print("(printer-control kind=\(kind) idx=\(idx))")
 
     case .commaDelimitedRegionStart:
       printDebugIndent()
-      print("[COMMA DELIMITED START Idx: \(idx)]")
+      print("(comma-delim-start idx=\(idx))")
 
     case .commaDelimitedRegionEnd:
       printDebugIndent()
-      print("[COMMA DELIMITED END Idx: \(idx)]")
+      print("(comma-delim-end idx=\(idx))")
 
     case .contextualBreakingStart:
       printDebugIndent()
-      print("[START BREAKING CONTEXT Idx: \(idx)]")
+      print("(contextual-break-start idx=\(idx))")
 
     case .contextualBreakingEnd:
       printDebugIndent()
-      print("[END BREAKING CONTEXT Idx: \(idx)]")
+      print("(contextual-break-end idx=\(idx))")
     }
   }
 
