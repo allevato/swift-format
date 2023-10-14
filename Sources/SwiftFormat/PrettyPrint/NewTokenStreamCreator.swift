@@ -63,7 +63,6 @@ final class NewTokenStreamCreator {
     self.configuration = configuration
     self.operatorTable = operatorTable
   }
-  
 }
 
 extension NewTokenStreamCreator: SyntaxTransformVisitor {
@@ -303,6 +302,33 @@ extension NewTokenStreamCreator: SyntaxTransformVisitor {
 
   func visit(_ node: FallThroughStmtSyntax) {
     visit(node.fallthroughKeyword)
+  }
+
+  func visit(_ node: FunctionCallExprSyntax) {
+    visit(node.calledExpression)
+    if let leftParen = node.leftParen, let rightParen = node.rightParen {
+      visit(leftParen)
+
+      if !node.arguments.isEmpty {
+        `break`(.open, size: 0)
+        group(argumentListConsistency(), if: shouldGroupAroundArgumentList(node.arguments)) {
+          visit(node.arguments)
+          `break`(.close, size: 0)
+        }
+      }
+
+      visit(rightParen)
+    }
+
+    if node.trailingClosure != nil &&
+        !isCompactSingleFunctionCallArgument(node.arguments) {
+      `break`(.same, newlines: .elective(ignoresDiscretionary: true))
+    }
+
+    if let trailingClosure = node.trailingClosure {
+      visit(trailingClosure)
+      visit(node.additionalTrailingClosures)
+    }
   }
 
   func visit(_ node: FunctionEffectSpecifiersSyntax) {
@@ -574,6 +600,12 @@ extension NewTokenStreamCreator {
 }
 
 extension NewTokenStreamCreator {
+  /// Returns the group consistency that should be used for argument lists based on the user's
+  /// current configuration.
+  private func argumentListConsistency() -> GroupBreakStyle {
+    return configuration.lineBreakBeforeEachArgument ? .consistent : .inconsistent
+  }
+
   private func arrangeEffectSpecifiers<Node: EffectSpecifiersSyntax>(_ node: Node) {
     guard node.asyncSpecifier != nil || node.throwsSpecifier != nil else {
       return
@@ -736,6 +768,32 @@ extension NewTokenStreamCreator {
     visit(rightBrace)
   }
 
+  /// Returns true if the argument list can be compacted, even if it spans multiple lines (where
+  /// compact means that it can start immediately after the open parenthesis).
+  ///
+  /// This is true for any argument list that contains a single argument (labeled or unlabeled) that
+  /// is an array, dictionary, or closure literal.
+  func isCompactSingleFunctionCallArgument(_ argumentList: LabeledExprListSyntax) -> Bool {
+    guard argumentList.count == 1 else { return false }
+
+    let expression = argumentList.first!.expression
+    return expression.is(ArrayExprSyntax.self) || expression.is(DictionaryExprSyntax.self)
+      || expression.is(ClosureExprSyntax.self)
+  }
+
+  /// Returns true if open/close breaks should be inserted around the entire function call argument
+  /// list.
+  private func shouldGroupAroundArgumentList(_ arguments: LabeledExprListSyntax) -> Bool {
+    let argumentCount = arguments.count
+
+    // If there are no arguments, there's no reason to break.
+    if argumentCount == 0 { return false }
+
+    // If there is more than one argument, we must open/close break around the whole list.
+    if argumentCount > 1 { return true }
+
+    return !isCompactSingleFunctionCallArgument(arguments)
+  }
 }
 
 extension NewTokenStreamCreator {
