@@ -3,7 +3,7 @@ import SwiftOperators
 @_spi(SyntaxTransformVisitor) import SwiftSyntax
 
 func computeCommands(_ creator: NewTokenStreamCreator, node: Syntax) -> [Token] {
-  creator.visit(node)
+  _ = creator.rewrite(node, detach: true)
   return creator.commands
 }
 
@@ -39,435 +39,739 @@ struct EnvironmentValues {
   }
 }
 
-final class NewTokenStreamCreator {
+final class NewTokenStreamCreator: SyntaxRewriter {
   struct SingleBindingVarDecl: EnvironmentKey {
     static var defaultValue: Bool { false }
   }
-
+  
   var commands: [Token] = []
-
+  
   var environment: EnvironmentValues = EnvironmentValues()
-
+  
   let configuration: Configuration
-
+  
   let operatorTable: OperatorTable
-
+  
   /// The index of the most recently appended break, or nil when no break has been appended.
   private var lastBreakIndex: Int? = nil
-
+  
   /// Whether newlines can be merged into the most recent break, based on which tokens have been
   /// appended since that break.
   private var canMergeNewlinesIntoLastBreak = false
-
+  
   init(configuration: Configuration, operatorTable: OperatorTable) {
     self.configuration = configuration
     self.operatorTable = operatorTable
   }
-}
 
-extension NewTokenStreamCreator: SyntaxTransformVisitor {
-  func visitAny(_ node: Syntax) {
-    _ = visitChildren(node)
-  }
-
-  func visit(_ node: AccessorBlockSyntax) {
-    switch node.accessors {
-    case .accessors(let accessors):
-      arrangeBracesAndContents(
-        leftBrace: node.leftBrace,
-        accessors: accessors,
-        rightBrace: node.rightBrace)
-    case .getter:
-      arrangeBracesAndContents(
-        of: node,
-        contentsKeyPath: \.getterCodeBlockItems)
-    }
-  }
-
-  func visit(_ node: AccessorDeclListSyntax) {
-    if let last = node.last {
-      for child in node.dropLast(1) {
-        visit(child)
-
-        let newlines: NewlineBehavior = child.body == nil ? .elective : .soft
-        `break`(.same, size: 1, newlines: newlines)
-      }
-      visit(last)
-    }
-  }
-
-  func visit(_ node: AccessorDeclSyntax) {
-    visit(node.attributes)
-    if let modifier = node.modifier {
-      visit(modifier)
-    }
-
-    visit(node.accessorSpecifier)
-    if let parameters = node.parameters {
-      visit(parameters)
-    }
-    if let effectSpecifiers = node.effectSpecifiers {
-      visit(effectSpecifiers)
-    }
-    if let body = node.body {
-      visit(body)
-    }
-  }
-
-  func visit(_ node: AccessorEffectSpecifiersSyntax) {
-    arrangeEffectSpecifiers(node)
-  }
-
-  func visit(_ node: ActorDeclSyntax) {
-    arrangeTypeDeclBlock(
-      attributes: node.attributes,
-      modifiers: node.modifiers,
-      typeKeyword: node.actorKeyword,
-      name: node.name,
-      genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
-      inheritanceClause: node.inheritanceClause,
-      genericWhereClause: node.genericWhereClause,
-      memberBlock: node.memberBlock)
-  }
-
-  func visit(_ node: ArrayExprSyntax) {
-    visit(node.leftSquare)
-    `break`(.open, size: 0)
-    group {
-      visit(node.elements)
-      `break`(.close, size: 0)
-    }
-    visit(node.rightSquare)
+  private func format<Node: SyntaxProtocol>(
+    _ node: Node, body: () -> Void
+  ) -> Node {
+    body()
+    return node
   }
   
-  func visit(_ node: ArrayElementSyntax) {
-    visit(node.expression)
-    if let trailingComma = node.trailingComma {
-      visit(trailingComma)
+  private func format<Node: DeclSyntaxProtocol>(
+    _ node: Node, body: () -> Void
+  ) -> DeclSyntax {
+    body()
+    return DeclSyntax(node)
+  }
+  
+  private func format<Node: ExprSyntaxProtocol>(
+    _ node: Node, body: () -> Void
+  ) -> ExprSyntax {
+    body()
+    return ExprSyntax(node)
+  }
+  
+  private func format<Node: PatternSyntaxProtocol>(
+    _ node: Node, body: () -> Void
+  ) -> PatternSyntax {
+    body()
+    return PatternSyntax(node)
+  }
+  
+  private func format<Node: StmtSyntaxProtocol>(
+    _ node: Node, body: () -> Void
+  ) -> StmtSyntax {
+    body()
+    return StmtSyntax(node)
+  }
+  
+  private func format<Node: TypeSyntaxProtocol>(
+    _ node: Node, body: () -> Void
+  ) -> TypeSyntax {
+    body()
+    return TypeSyntax(node)
+  }
+  
+  private func arrange<Node: SyntaxProtocol>(_ node: Node) {
+    _ = rewrite(node, detach: true)
+  }
+  
+  override func visit(_ node: AccessorBlockSyntax) -> AccessorBlockSyntax {
+    format(node) {
+      switch node.accessors {
+      case .accessors(let accessors):
+        arrangeBracesAndContents(
+          leftBrace: node.leftBrace,
+          accessors: accessors,
+          rightBrace: node.rightBrace)
+      case .getter:
+        arrangeBracesAndContents(
+          of: node,
+          contentsKeyPath: \.getterCodeBlockItems)
+      }
+    }
+  }
+  
+  override func visit(_ node: AccessorDeclListSyntax) -> AccessorDeclListSyntax {
+    format(node) {
+      if let last = node.last {
+        for child in node.dropLast(1) {
+          arrange(child)
+          
+          let newlines: NewlineBehavior = child.body == nil ? .elective : .soft
+          `break`(.same, size: 1, newlines: newlines)
+        }
+        arrange(last)
+      }
+    }
+  }
+  
+  override func visit(_ node: AccessorDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrange(node.attributes)
+      if let modifier = node.modifier {
+        arrange(modifier)
+      }
+      
+      arrange(node.accessorSpecifier)
+      if let parameters = node.parameters {
+        arrange(parameters)
+      }
+      if let effectSpecifiers = node.effectSpecifiers {
+        arrange(effectSpecifiers)
+      }
+      if let body = node.body {
+        arrange(body)
+      }
+    }
+  }
+  
+  override func visit(_ node: AccessorEffectSpecifiersSyntax) -> AccessorEffectSpecifiersSyntax {
+    format(node) {
+      arrangeEffectSpecifiers(node)
+    }
+  }
+  
+  override func visit(_ node: ActorDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrangeTypeDeclBlock(
+        attributes: node.attributes,
+        modifiers: node.modifiers,
+        typeKeyword: node.actorKeyword,
+        name: node.name,
+        genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
+        inheritanceClause: node.inheritanceClause,
+        genericWhereClause: node.genericWhereClause,
+        memberBlock: node.memberBlock)
+    }
+  }
+  
+  override func visit(_ node: ArrayExprSyntax) -> ExprSyntax {
+    format(node) {
+      arrange(node.leftSquare)
+      `break`(.open, size: 0)
+      group {
+        arrange(node.elements)
+        `break`(.close, size: 0)
+      }
+      arrange(node.rightSquare)
+    }
+  }
+  
+  override func visit(_ node: ArrayElementSyntax) -> ArrayElementSyntax{
+    format(node) {
+      arrange(node.expression)
+      if let trailingComma = node.trailingComma {
+        arrange(trailingComma)
+        `break`(.same)
+      }
+    }
+  }
+  
+  override func visit(_ node: ArrayTypeSyntax) -> TypeSyntax {
+    format(node) {
+      arrange(node.leftSquare)
+      arrange(Syntax(node.element))
+      arrange(node.rightSquare)
+    }
+  }
+
+  private func forEach<Nodes: SyntaxCollection>(
+    _ node: Nodes,
+    execute: (Nodes.Element) -> Void,
+    separator: () -> Void
+  ) {
+    if let first = node.first {
+      execute(first)
+      for child in node.dropFirst() {
+        separator()
+        execute(child)
+      }
+    }
+  }
+
+  override func visit(_ node: AttributeListSyntax) -> AttributeListSyntax {
+    format(node) {
+      guard !node.isEmpty else { return }
+      
+      group {
+        forEach(node) { child in
+          arrange(child)
+        } separator: {
+          `break`(.same)
+        }
+      }
+      // TODO: suppressFinalBreak
       `break`(.same)
     }
   }
   
-  func visit(_ node: ArrayTypeSyntax) {
-    visit(node.leftSquare)
-    visit(Syntax(node.element))
-    visit(node.rightSquare)
-  }
-
-  func visit(_ node: AttributeListSyntax) {
-    guard !node.isEmpty else { return }
-
-    group {
-      for child in node {
-        visit(child)
-        `break`(.same)
-      }
-    }
-    // TODO: suppressFinalBreak
-    `break`(.same)
-  }
-
-  func visit(_ node: BreakStmtSyntax) {
-    visit(node.breakKeyword)
-    if let label = node.label {
-      `break`()
-      visit(label)
-    }
-  }
-
-  func visit(_ node: ClassDeclSyntax) {
-    arrangeTypeDeclBlock(
-      attributes: node.attributes,
-      modifiers: node.modifiers,
-      typeKeyword: node.classKeyword,
-      name: node.name,
-      genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
-      inheritanceClause: node.inheritanceClause,
-      genericWhereClause: node.genericWhereClause,
-      memberBlock: node.memberBlock)
-  }
-
-  func visit(_ node: CodeBlockItemSyntax) {
-    let newlines: NewlineBehavior = /*
-                                     item != node.last && shouldInsertNewline(basedOn: item.semicolon) ?*/ .soft /*: .elective*/
-    let resetSize = node.semicolon != nil ? 1 : 0
-    
-    group {
-      visit(node.item)
-      if let semicolon = node.semicolon {
-        visit(semicolon)
-      }
-    }
-    `break`(.reset, size: resetSize, newlines: newlines)
-  }
-
-  func visit(_ node: CodeBlockSyntax) {
-    arrangeBracesAndContents(of: node, contentsKeyPath: \.statements)
-  }
-
-  func visit(_ node: ContinueStmtSyntax) {
-    visit(node.continueKeyword)
-    if let label = node.label {
-      `break`()
-      visit(label)
-    }
-  }
-
-  func visit(_ node: DeclModifierDetailSyntax) {
-    visit(node.leftParen)
-    visit(node.detail)
-    visit(node.rightParen)
-  }
-
-  func visit(_ node: DeclModifierSyntax) {
-    visit(node.name)
-    if let detail = node.detail {
-      visit(detail)
-    }
-
-    // Due to the way we currently use spaces after variable binding specifiers, we need this
-    // special exception for `async let` statements to avoid breaking prematurely between the
-    // `async` and `let` keywords.
-    if node.name.tokenKind == .keyword(.async) {
-      space()
-    } else {
-      `break`()
-    }
-  }
-
-  func visit(_ node: DeferStmtSyntax) {
-    visit(node.deferKeyword)
-    visit(node.body)
-  }
-
-  func visit(_ node: DeinitializerDeclSyntax) {
-    group {
-      visit(node.attributes)
-      visit(node.modifiers)
-      visit(node.deinitKeyword)
-      if let effectSpecifiers = node.effectSpecifiers {
-        visit(effectSpecifiers)
-      }
-      if let body = node.body {
-        visit(body)
+  override func visit(_ node: AvailabilityArgumentListSyntax) -> AvailabilityArgumentListSyntax {
+    format(node) {
+      forEach(node) { child in
+        arrange(child)
+      } separator: {
+        `break`(.same, size: 1)
       }
     }
   }
 
-  func visit(_ node: DeinitializerEffectSpecifiersSyntax) {
-    if let asyncSpecifier = node.asyncSpecifier {
-      `break`()
-      visit(asyncSpecifier)
-    }
-  }
-
-  func visit(_ node: DictionaryTypeSyntax) {
-    visit(node.leftSquare)
-    visit(node.key)
-    visit(node.colon)
-    `break`()
-    visit(node.value)
-    visit(node.rightSquare)
-  }
-
-  func visit(_ node: DoStmtSyntax) {
-    visit(node.doKeyword)
-    visit(node.body)
-    visit(node.catchClauses)
-  }
-
-  func visit(_ node: EnumDeclSyntax) {
-    arrangeTypeDeclBlock(
-      attributes: node.attributes,
-      modifiers: node.modifiers,
-      typeKeyword: node.enumKeyword,
-      name: node.name,
-      genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
-      inheritanceClause: node.inheritanceClause,
-      genericWhereClause: node.genericWhereClause,
-      memberBlock: node.memberBlock)
-  }
-
-  func visit(_ node: ExtensionDeclSyntax) {
-    arrangeTypeDeclBlock(
-      attributes: node.attributes,
-      modifiers: node.modifiers,
-      typeKeyword: node.extensionKeyword,
-      name: node.extendedType,
-      genericParameterOrPrimaryAssociatedTypeClause: nil,
-      inheritanceClause: node.inheritanceClause,
-      genericWhereClause: node.genericWhereClause,
-      memberBlock: node.memberBlock)
-  }
-
-  func visit(_ node: FallThroughStmtSyntax) {
-    visit(node.fallthroughKeyword)
-  }
-
-  func visit(_ node: FunctionCallExprSyntax) {
-    visit(node.calledExpression)
-    if let leftParen = node.leftParen, let rightParen = node.rightParen {
-      visit(leftParen)
-
-      if !node.arguments.isEmpty {
-        `break`(.open, size: 0)
-        group(argumentListConsistency(), if: shouldGroupAroundArgumentList(node.arguments)) {
-          visit(node.arguments)
-          `break`(.close, size: 0)
-        }
-      }
-
-      visit(rightParen)
-    }
-
-    if node.trailingClosure != nil &&
-        !isCompactSingleFunctionCallArgument(node.arguments) {
-      `break`(.same, newlines: .elective(ignoresDiscretionary: true))
-    }
-
-    if let trailingClosure = node.trailingClosure {
-      visit(trailingClosure)
-      visit(node.additionalTrailingClosures)
-    }
-  }
-
-  func visit(_ node: FunctionEffectSpecifiersSyntax) {
-    arrangeEffectSpecifiers(node)
-  }
-
-  func visit(_ node: InitializerClauseSyntax) {
-    space()
-    visit(node.equal)
-    `break`()
-    visit(node.value)
-  }
-
-  func visit(_ node: LabeledStmtSyntax) {
-    visit(node.label)
-    visit(node.colon)
-    space()
-    visit(Syntax(node.statement))
-  }
-
-  func visit(_ node: MemberBlockItemSyntax) {
-    let newlines: NewlineBehavior = /*
-                                     item != node.last && shouldInsertNewline(basedOn: item.semicolon) ?*/ .soft /*: .elective*/
-    let resetSize = node.semicolon != nil ? 1 : 0
-    
-    group {
-      visit(Syntax(node.decl))
-      if let semicolon = node.semicolon {
-        visit(semicolon)
-      }
-    }
-    `break`(.reset, size: resetSize, newlines: newlines)
-  }
-
-  func visit(_ node: PatternBindingSyntax) {
-    group(if: environment.value(for: SingleBindingVarDecl.self)) {
-      visit(node.pattern)
-
-      // TODO: MissingTypeSyntax
-      if let typeAnnotation = node.typeAnnotation {
-        visit(typeAnnotation)
-
-        if node.initializer == nil && node.trailingComma == nil {
-          `break`(.close, size: 0)
-        }
-      }
-      if let initializer = node.initializer {
-        visit(initializer)
-
-        if node.typeAnnotation != nil && node.trailingComma == nil {
-          `break`(.close, size: 0)
-        }
-      }
-      if let accessorBlock = node.accessorBlock {
-        visit(accessorBlock)
-      }
-      if let trailingComma = node.trailingComma {
-        visit(trailingComma)
-        `break`(.same)
-
-        if node.typeAnnotation != nil && node.initializer != nil {
-          `break`(.close, size: 0)
-        }
+  override func visit(_ node: AvailabilityLabeledArgumentSyntax) -> AvailabilityLabeledArgumentSyntax {
+    format(node) {
+      group {
+        arrange(node.label)
+        arrange(node.colon)
+        `break`(.continue, newlines: .elective(ignoresDiscretionary: true))
+        arrange(node.value)
       }
     }
   }
 
-  func visit(_ node: ProtocolDeclSyntax) {
-    arrangeTypeDeclBlock(
-      attributes: node.attributes,
-      modifiers: node.modifiers,
-      typeKeyword: node.protocolKeyword,
-      name: node.name,
-      genericParameterOrPrimaryAssociatedTypeClause: node.primaryAssociatedTypeClause.map(Syntax.init),
-      inheritanceClause: node.inheritanceClause,
-      genericWhereClause: node.genericWhereClause,
-      memberBlock: node.memberBlock)
-  }
-
-  func visit(_ node: StructDeclSyntax) {
-    arrangeTypeDeclBlock(
-      attributes: node.attributes,
-      modifiers: node.modifiers,
-      typeKeyword: node.structKeyword,
-      name: node.name,
-      genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
-      inheritanceClause: node.inheritanceClause,
-      genericWhereClause: node.genericWhereClause,
-      memberBlock: node.memberBlock)
-  }
-
-  func visit(_ node: ThrowStmtSyntax) {
-    visit(node.throwKeyword)
-    `break`()
-    visit(Syntax(node.expression))
-  }
-
-  func visit(_ node: TypeAnnotationSyntax) {
-    group {
-      visit(node.colon)
-      `break`(.open(kind: .continuation), newlines: .elective(ignoresDiscretionary: true))
-      visit(node.type)
-    }
-  }
-
-  func visit(_ node: TypeEffectSpecifiersSyntax) {
-    arrangeEffectSpecifiers(node)
-  }
-
-  func visit(_ node: VariableDeclSyntax) {
-    visit(node.attributes)
-    visit(node.modifiers)
-    visit(node.bindingSpecifier)
-
-    withEnvironment(node.bindings.count == 1, for: SingleBindingVarDecl.self) { isSingleBinding in
-      if isSingleBinding {
-        // If there is only a single binding, don't allow a break between the binding specifier
-        // and the identifier; there are better places to break later on.
-        space()
-      } else {
-        // If there is more than one binding, we permit an open-break after the binding specifier
-        // so that each of the comma-delimited items will potentially receive indentation.
-        `break`(.open)
-      }
-
-      group(if: !isSingleBinding) {
-        visit(node.bindings)
-      }
-
-      if !isSingleBinding {
-        `break`(.close, size: 0)
+  override func visit(_ node: BreakStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.breakKeyword)
+      if let label = node.label {
+        `break`()
+        arrange(label)
       }
     }
   }
   
-  func visit(_ node: YieldStmtSyntax) {
-    visit(node.yieldKeyword)
-    space()
-    visit(node.yieldedExpressions)
+  override func visit(_ node: ClassDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrangeTypeDeclBlock(
+        attributes: node.attributes,
+        modifiers: node.modifiers,
+        typeKeyword: node.classKeyword,
+        name: node.name,
+        genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
+        inheritanceClause: node.inheritanceClause,
+        genericWhereClause: node.genericWhereClause,
+        memberBlock: node.memberBlock)
+    }
+  }
+  
+  override func visit(_ node: CodeBlockItemSyntax) -> CodeBlockItemSyntax {
+    format(node) {
+      let newlines: NewlineBehavior = /*
+                                       item != node.last && shouldInsertNewline(basedOn: item.semicolon) ?*/ .soft /*: .elective*/
+      let resetSize = node.semicolon != nil ? 1 : 0
+      
+      group {
+        arrange(node.item)
+        if let semicolon = node.semicolon {
+          arrange(semicolon)
+        }
+      }
+      `break`(.reset, size: resetSize, newlines: newlines)
+    }
+  }
+  
+  override func visit(_ node: CodeBlockSyntax) -> CodeBlockSyntax {
+    format(node) {
+      arrangeBracesAndContents(of: node, contentsKeyPath: \.statements)
+    }
+  }
+  
+  override func visit(_ node: ConformanceRequirementSyntax) -> ConformanceRequirementSyntax {
+    format(node) {
+      arrange(node.leftType)
+      arrange(node.colon)
+      `break`()
+      arrange(node.rightType)
+    }
+  }
+
+  override func visit(_ node: ContinueStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.continueKeyword)
+      if let label = node.label {
+        `break`()
+        arrange(label)
+      }
+    }
+  }
+  
+  override func visit(_ node: DeclModifierDetailSyntax) -> DeclModifierDetailSyntax {
+    format(node) {
+      arrange(node.leftParen)
+      arrange(node.detail)
+      arrange(node.rightParen)
+    }
+  }
+  
+  override func visit(_ node: DeclModifierSyntax) -> DeclModifierSyntax {
+    format(node) {
+      arrange(node.name)
+      if let detail = node.detail {
+        arrange(detail)
+      }
+      
+      // Due to the way we currently use spaces after variable binding specifiers, we need this
+      // special exception for `async let` statements to avoid breaking prematurely between the
+      // `async` and `let` keywords.
+      if node.name.tokenKind == .keyword(.async) {
+        space()
+      } else {
+        `break`()
+      }
+    }
+  }
+  
+  override func visit(_ node: DeferStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.deferKeyword)
+      arrange(node.body)
+    }
+  }
+  
+  override func visit(_ node: DeinitializerDeclSyntax) -> DeclSyntax {
+    format(node) {
+      group {
+        arrange(node.attributes)
+        arrange(node.modifiers)
+        arrange(node.deinitKeyword)
+        if let effectSpecifiers = node.effectSpecifiers {
+          arrange(effectSpecifiers)
+        }
+        if let body = node.body {
+          arrange(body)
+        }
+      }
+    }
+  }
+  
+  override func visit(_ node: DeinitializerEffectSpecifiersSyntax) -> DeinitializerEffectSpecifiersSyntax {
+    format(node) {
+      if let asyncSpecifier = node.asyncSpecifier {
+        `break`()
+        arrange(asyncSpecifier)
+      }
+    }
+  }
+  
+  override func visit(_ node: DictionaryTypeSyntax) -> TypeSyntax {
+    format(node) {
+      arrange(node.leftSquare)
+      arrange(node.key)
+      arrange(node.colon)
+      `break`()
+      arrange(node.value)
+      arrange(node.rightSquare)
+    }
+  }
+  
+  override func visit(_ node: DoStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.doKeyword)
+      arrange(node.body)
+      arrange(node.catchClauses)
+    }
+  }
+  
+  override func visit(_ node: EnumDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrangeTypeDeclBlock(
+        attributes: node.attributes,
+        modifiers: node.modifiers,
+        typeKeyword: node.enumKeyword,
+        name: node.name,
+        genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
+        inheritanceClause: node.inheritanceClause,
+        genericWhereClause: node.genericWhereClause,
+        memberBlock: node.memberBlock)
+    }
+  }
+  
+  override func visit(_ node: ExtensionDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrangeTypeDeclBlock(
+        attributes: node.attributes,
+        modifiers: node.modifiers,
+        typeKeyword: node.extensionKeyword,
+        name: node.extendedType,
+        genericParameterOrPrimaryAssociatedTypeClause: nil,
+        inheritanceClause: node.inheritanceClause,
+        genericWhereClause: node.genericWhereClause,
+        memberBlock: node.memberBlock)
+    }
+  }
+  
+  override func visit(_ node: FallThroughStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.fallthroughKeyword)
+    }
+  }
+  
+  override func visit(_ node: FunctionCallExprSyntax) -> ExprSyntax {
+    format(node) {
+      arrange(node.calledExpression)
+      if let leftParen = node.leftParen, let rightParen = node.rightParen {
+        arrange(leftParen)
+        
+        if !node.arguments.isEmpty {
+          `break`(.open, size: 0)
+          group(argumentListConsistency(), if: shouldGroupAroundArgumentList(node.arguments)) {
+            arrange(node.arguments)
+            `break`(.close, size: 0)
+          }
+        }
+        
+        arrange(rightParen)
+      }
+      
+      if node.trailingClosure != nil &&
+          !isCompactSingleFunctionCallArgument(node.arguments) {
+        `break`(.same, newlines: .elective(ignoresDiscretionary: true))
+      }
+      
+      if let trailingClosure = node.trailingClosure {
+        arrange(trailingClosure)
+        arrange(node.additionalTrailingClosures)
+      }
+    }
+  }
+  
+  override func visit(_ node: FunctionEffectSpecifiersSyntax) -> FunctionEffectSpecifiersSyntax {
+    format(node) {
+      arrangeEffectSpecifiers(node)
+    }
+  }
+  
+  override func visit(_ node: GenericParameterClauseSyntax) -> GenericParameterClauseSyntax {
+    format(node) {
+      arrange(node.leftAngle)
+      `break`(.open, size: 0)
+      group(argumentListConsistency()) {
+        arrange(node.parameters)
+        `break`(.close, size: 0)
+      }
+      arrange(node.rightAngle)
+    }
+  }
+
+  override func visit(_ node: GenericParameterSyntax) -> GenericParameterSyntax {
+    format(node) {
+      group {
+        if let eachKeyword = node.eachKeyword {
+          arrange(eachKeyword)
+        }
+        arrange(node.name)
+        if let colon = node.colon {
+          arrange(colon)
+          `break`()
+        }
+        if let inheritedType = node.inheritedType {
+          arrange(inheritedType)
+        }
+        if let trailingComma = node.trailingComma {
+          arrange(trailingComma)
+        }
+      }
+      if node.trailingComma != nil {
+        `break`(.same)
+      }
+    }
+  }
+
+  override func visit(_ node: GenericRequirementSyntax) -> GenericRequirementSyntax {
+    format(node) {
+      group {
+        arrange(node.requirement)
+        if let trailingComma = node.trailingComma {
+          arrange(trailingComma)
+        }
+      }
+      if node.trailingComma != nil {
+        `break`(.same)
+      }
+    }
+  }
+
+  override func visit(_ node: GenericWhereClauseSyntax) -> GenericWhereClauseSyntax {
+    format(node) {
+      arrange(node.whereKeyword)
+      `break`(.open)
+      group(genericRequirementListConsistency()) {
+        arrange(node.requirements)
+      }
+      `break`(.close, size: 0)
+    }
+  }
+
+  override func visit(_ node: InitializerClauseSyntax) -> InitializerClauseSyntax {
+    format(node) {
+      space()
+      arrange(node.equal)
+      `break`()
+      arrange(node.value)
+    }
+  }
+  
+  override func visit(_ node: InheritanceClauseSyntax) -> InheritanceClauseSyntax {
+    format(node) {
+      arrange(node.colon)
+
+      // Normally, the open-break is placed before entering the group. In this case, it's intentionally
+      // ordered differently so that the inheritance list can start on the current line and only
+      // breaks if the first item in the list would overflow the column limit.
+      group {
+        `break`(.open)
+        arrange(node.inheritedTypes)
+        `break`(.close, size: 0)
+      }
+    }
+  }
+
+  override func visit(_ node: InheritedTypeSyntax) -> InheritedTypeSyntax {
+    format(node) {
+      arrange(node.type)
+      if let trailingComma = node.trailingComma {
+        arrange(trailingComma)
+        `break`(.same)
+      }
+    }
+  }
+
+  override func visit(_ node: LabeledStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.label)
+      arrange(node.colon)
+      space()
+      arrange(Syntax(node.statement))
+    }
+  }
+  
+  override func visit(_ node: MemberBlockItemSyntax) -> MemberBlockItemSyntax {
+    format(node) {
+      let newlines: NewlineBehavior = /*
+                                       item != node.last && shouldInsertNewline(basedOn: item.semicolon) ?*/ .soft /*: .elective*/
+      let resetSize = node.semicolon != nil ? 1 : 0
+      
+      group {
+        arrange(Syntax(node.decl))
+        if let semicolon = node.semicolon {
+          arrange(semicolon)
+        }
+      }
+      `break`(.reset, size: resetSize, newlines: newlines)
+    }
+  }
+  
+  override func visit(_ node: PatternBindingSyntax) -> PatternBindingSyntax {
+    format(node) {
+      group(if: environment.value(for: SingleBindingVarDecl.self)) {
+        arrange(node.pattern)
+        
+        // TODO: MissingTypeSyntax
+        if let typeAnnotation = node.typeAnnotation {
+          arrange(typeAnnotation)
+          
+//          if node.initializer == nil && node.trailingComma == nil {
+//            `break`(.close, size: 0)
+//          }
+        }
+        if let initializer = node.initializer {
+          arrange(initializer)
+          
+//          if node.typeAnnotation != nil && node.trailingComma == nil {
+//            `break`(.close, size: 0)
+//          }
+        }
+        if let accessorBlock = node.accessorBlock {
+          arrange(accessorBlock)
+        }
+        if let trailingComma = node.trailingComma {
+          arrange(trailingComma)
+          `break`(.same)
+          
+//          if node.typeAnnotation != nil && node.initializer != nil {
+//            `break`(.close, size: 0)
+//          }
+        }
+      }
+    }
+  }
+  
+  override func visit(_ node: PlatformVersionItemListSyntax) -> PlatformVersionItemListSyntax {
+    format(node) {
+      forEach(node) { child in
+        arrange(child)
+      } separator: {
+        `break`(.same)
+      }
+    }
+  }
+
+  override func visit(_ node: PlatformVersionSyntax) -> PlatformVersionSyntax {
+    format(node) {
+      group {
+        arrange(node.platform)
+        if let version = node.version {
+          `break`(.continue)
+          arrange(version)
+        }
+      }
+    }
+  }
+
+  override func visit(_ node: ProtocolDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrangeTypeDeclBlock(
+        attributes: node.attributes,
+        modifiers: node.modifiers,
+        typeKeyword: node.protocolKeyword,
+        name: node.name,
+        genericParameterOrPrimaryAssociatedTypeClause: node.primaryAssociatedTypeClause.map(Syntax.init),
+        inheritanceClause: node.inheritanceClause,
+        genericWhereClause: node.genericWhereClause,
+        memberBlock: node.memberBlock)
+    }
+  }
+  
+  override func visit(_ node: SameTypeRequirementSyntax) -> SameTypeRequirementSyntax {
+    format(node) {
+      arrange(node.leftType)
+      `break`()
+      arrange(node.equal)
+      space()
+      arrange(node.rightType)
+    }
+  }
+
+  override func visit(_ node: StructDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrangeTypeDeclBlock(
+        attributes: node.attributes,
+        modifiers: node.modifiers,
+        typeKeyword: node.structKeyword,
+        name: node.name,
+        genericParameterOrPrimaryAssociatedTypeClause: node.genericParameterClause.map(Syntax.init),
+        inheritanceClause: node.inheritanceClause,
+        genericWhereClause: node.genericWhereClause,
+        memberBlock: node.memberBlock)
+    }
+  }
+  
+  override func visit(_ node: ThrowStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.throwKeyword)
+      `break`()
+      arrange(Syntax(node.expression))
+    }
+  }
+  
+  override func visit(_ node: TypeAnnotationSyntax) -> TypeAnnotationSyntax {
+    format(node) {
+      group {
+        arrange(node.colon)
+//        `break`(.open(kind: .continuation), newlines: .elective(ignoresDiscretionary: true))
+        arrange(node.type)
+//        `break`(.close(mustBreak: false), size: 0)
+      }
+    }
+  }
+  
+  override func visit(_ node: TypeEffectSpecifiersSyntax) -> TypeEffectSpecifiersSyntax {
+    format(node) {
+      arrangeEffectSpecifiers(node)
+    }
+  }
+  
+  override func visit(_ node: VariableDeclSyntax) -> DeclSyntax {
+    format(node) {
+      arrange(node.attributes)
+      arrange(node.modifiers)
+      arrange(node.bindingSpecifier)
+      
+      withEnvironment(node.bindings.count == 1, for: SingleBindingVarDecl.self) { isSingleBinding in
+        if isSingleBinding {
+          // If there is only a single binding, don't allow a break between the binding specifier
+          // and the identifier; there are better places to break later on.
+          space()
+        } else {
+          // If there is more than one binding, we permit an open-break after the binding specifier
+          // so that each of the comma-delimited items will potentially receive indentation.
+          `break`(.open)
+        }
+        
+        group(if: !isSingleBinding) {
+          arrange(node.bindings)
+        }
+        
+        if !isSingleBinding {
+          `break`(.close, size: 0)
+        }
+      }
+    }
+  }
+  
+  override func visit(_ node: YieldStmtSyntax) -> StmtSyntax {
+    format(node) {
+      arrange(node.yieldKeyword)
+      space()
+      arrange(node.yieldedExpressions)
+    }
+  }
+  
+  override func visit(_ node: TokenSyntax) -> TokenSyntax {
+    processLeadingTrivia(of: node)
+    enqueue(.syntax(node.text))
+    
+    for piece in node.trailingTrivia {
+      switch piece {
+      case .blockComment(let comment):
+        enqueue(.comment(Comment(kind: .block, text: comment), wasEndOfLine: false))
+      case .docBlockComment(let comment):
+        enqueue(.comment(Comment(kind: .docBlock, text: comment), wasEndOfLine: false))
+
+      case .lineComment(let comment):
+        enqueue(.comment(Comment(kind: .line, text: comment), wasEndOfLine: true))
+        `break`(.same, size: 0, newlines: .soft(count: 1, discretionary: false))
+      case .docLineComment(let comment):
+        enqueue(.comment(Comment(kind: .docLine, text: comment), wasEndOfLine: true))
+        `break`(.same, size: 0, newlines: .soft(count: 1, discretionary: false))
+
+      default:
+        break
+      }
+    }
+    
+    return node
   }
 }
 
@@ -573,30 +877,6 @@ extension NewTokenStreamCreator {
     }
     enqueue(.break(compatibleKind, size: 0, newlines: newlines))
   }
-
-  func visit(_ node: TokenSyntax) {
-    processLeadingTrivia(of: node)
-    enqueue(.syntax(node.text))
-    
-    for piece in node.trailingTrivia {
-      switch piece {
-      case .blockComment(let comment):
-        enqueue(.comment(Comment(kind: .block, text: comment), wasEndOfLine: false))
-      case .docBlockComment(let comment):
-        enqueue(.comment(Comment(kind: .docBlock, text: comment), wasEndOfLine: false))
-
-      case .lineComment(let comment):
-        enqueue(.comment(Comment(kind: .line, text: comment), wasEndOfLine: true))
-        `break`(.same, size: 0, newlines: .soft(count: 1, discretionary: false))
-      case .docLineComment(let comment):
-        enqueue(.comment(Comment(kind: .docLine, text: comment), wasEndOfLine: true))
-        `break`(.same, size: 0, newlines: .soft(count: 1, discretionary: false))
-
-      default:
-        break
-      }
-    }
-  }
 }
 
 extension NewTokenStreamCreator {
@@ -604,6 +884,12 @@ extension NewTokenStreamCreator {
   /// current configuration.
   private func argumentListConsistency() -> GroupBreakStyle {
     return configuration.lineBreakBeforeEachArgument ? .consistent : .inconsistent
+  }
+
+  /// Returns the group consistency that should be used for generic requirement lists based on
+  /// the user's current configuration.
+  private func genericRequirementListConsistency() -> GroupBreakStyle {
+    return configuration.lineBreakBeforeEachGenericRequirement ? .consistent : .inconsistent
   }
 
   private func arrangeEffectSpecifiers<Node: EffectSpecifiersSyntax>(_ node: Node) {
@@ -614,14 +900,14 @@ extension NewTokenStreamCreator {
     `break`()
     if let asyncSpecifier = node.asyncSpecifier, let throwsSpecifier = node.throwsSpecifier {
       group {
-        visit(asyncSpecifier)
+        arrange(asyncSpecifier)
         `break`()
-        visit(throwsSpecifier)
+        arrange(throwsSpecifier)
       }
     } else if let asyncSpecifier = node.asyncSpecifier {
-      visit(asyncSpecifier)
+      arrange(asyncSpecifier)
     } else if let throwsSpecifier = node.throwsSpecifier {
-      visit(throwsSpecifier)
+      arrange(throwsSpecifier)
     }
   }
 
@@ -669,22 +955,25 @@ extension NewTokenStreamCreator {
     memberBlock: MemberBlockSyntax
   ) {
     group {
-      visit(attributes)
+      arrange(attributes)
       group {
-        visit(modifiers)
-        visit(typeKeyword)
+        arrange(modifiers)
+        arrange(typeKeyword)
         `break`()
         
-        visit(Syntax(name))
+        arrange(Syntax(name))
       }
       if let genericParameterClause = genericParameterOrPrimaryAssociatedTypeClause {
-        visit(genericParameterClause)
+        arrange(genericParameterClause)
       }
       if let inheritanceClause = inheritanceClause {
-        visit(inheritanceClause)
+        arrange(inheritanceClause)
       }
       if let genericWhereClause = genericWhereClause {
-        visit(genericWhereClause)
+        `break`(.same)
+        group {
+          arrange(genericWhereClause)
+        }
       }
 
       arrangeBracesAndContents(of: memberBlock, contentsKeyPath: \.members)
@@ -716,21 +1005,21 @@ extension NewTokenStreamCreator {
       `break`(.reset, size: 1, newlines: .elective(ignoresDiscretionary: true))
     }
 
-    visit(node.leftBrace)
+    arrange(node.leftBrace)
 
     if !areBracesCompletelyEmpty(node, contentsKeyPath: contentsKeyPath) {
       `break`(.open, size: 1, newlines: openBraceNewlineBehavior)
       group {
-        visit(Syntax(node[keyPath: contentsKeyPath]))
+        arrange(Syntax(node[keyPath: contentsKeyPath]))
         `break`(.close, size: 1)
       }
     } else {
       `break`(.open, size: 0, newlines: openBraceNewlineBehavior)
-      visit(Syntax(node[keyPath: contentsKeyPath]))
+      arrange(Syntax(node[keyPath: contentsKeyPath]))
       `break`(.close, size: 0)
     }
 
-    visit(node.rightBrace)
+    arrange(node.rightBrace)
   }
 
   /// Applies consistent formatting to the braces and contents of the given node.
@@ -751,21 +1040,21 @@ extension NewTokenStreamCreator {
     let bracesAreCompletelyEmpty = areAccessorsEmpty && !commentPrecedesRightBrace
 
     `break`(.reset, size: 1)
-    visit(leftBrace)
+    arrange(leftBrace)
 
     if !bracesAreCompletelyEmpty {
       `break`(.open, size: 1)
       group {
-        visit(accessors)
+        arrange(accessors)
         `break`(.close, size: 1)
       }
     } else {
       `break`(.open, size: 0)
-      visit(accessors)
+      arrange(accessors)
       `break`(.close, size: 0)
     }
 
-    visit(rightBrace)
+    arrange(rightBrace)
   }
 
   /// Returns true if the argument list can be compacted, even if it spans multiple lines (where
@@ -848,15 +1137,15 @@ extension NewTokenStreamCreator {
     size: Int = 1,
     newlines: NewlineBehavior = .elective
   ) {
-    commands.append(.break(kind, size: size, newlines: newlines))
+    enqueue(.break(kind, size: size, newlines: newlines))
   }
 
   private func group<Result>(
     _ style: GroupBreakStyle = .inconsistent,
     body: () -> Result
   ) -> Result {
-    commands.append(.open(style))
-    defer { commands.append(.close) }
+    enqueue(.open(style))
+    defer { enqueue(.close) }
     return body()
   }
 
@@ -873,6 +1162,6 @@ extension NewTokenStreamCreator {
   }
 
   private func space(count: Int = 1, flexible: Bool = false) {
-    commands.append(.space(size: count, flexible: flexible))
+    enqueue(.space(size: count, flexible: flexible))
   }
 }
