@@ -137,7 +137,7 @@ if buildOnlyTests {
 let package = Package(
   name: "swift-format",
   platforms: [
-    .macOS("12.0"),
+    .macOS("13.0"),
     .iOS("13.0"),
   ],
   products: products,
